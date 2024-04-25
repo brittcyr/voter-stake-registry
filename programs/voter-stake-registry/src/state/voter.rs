@@ -61,8 +61,7 @@ impl Voter {
                 let mint_config = &registrar.voting_mints[d.voting_mint_config_idx as usize];
                 let max_locked_vote_weight =
                     mint_config.max_extra_lockup_vote_weight(d.amount_initially_locked_native)?;
-                let amount = d.voting_power_locked_guaranteed(
-                    curr_ts,
+                let amount = d.voting_power_locked(
                     at_ts,
                     max_locked_vote_weight,
                     mint_config.lockup_saturation_secs,

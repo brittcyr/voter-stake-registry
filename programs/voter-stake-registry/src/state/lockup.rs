@@ -94,10 +94,7 @@ impl Lockup {
 
     /// Number of seconds left in the lockup.
     /// May be more than end_ts-start_ts if curr_ts < start_ts.
-    pub fn seconds_left(&self, mut curr_ts: i64) -> u64 {
-        if self.kind == LockupKind::Constant {
-            curr_ts = self.start_ts;
-        }
+    pub fn seconds_left(&self, curr_ts: i64) -> u64 {
         if curr_ts >= self.end_ts {
             0
         } else {
@@ -173,13 +170,18 @@ pub enum LockupKind {
 
     /// Lock up for a number of months, where a linear fraction vests each month.
     Monthly,
-
+    
+    /// Deprecated: No longer should be used. Existing usage should behave the
+    /// same as None.
+    /// 
     /// Lock up for a number of days, no vesting.
-    Cliff,
-
+    DeprecatedCliff,
+    /// Deprecated: No longer should be used. Existing usage should behave the
+    /// same as None.
+    ///
     /// Lock up permanently. The number of days specified becomes the minimum
     /// unlock period when the deposit (or a part of it) is changed to Cliff.
-    Constant,
+    DeprecatedConstant,
 }
 
 impl LockupKind {
@@ -192,8 +194,8 @@ impl LockupKind {
             LockupKind::None => 0,
             LockupKind::Daily => SECS_PER_DAY,
             LockupKind::Monthly => SECS_PER_MONTH,
-            LockupKind::Cliff => SECS_PER_DAY, // arbitrary choice
-            LockupKind::Constant => SECS_PER_DAY, // arbitrary choice
+            LockupKind::DeprecatedCliff => 0,
+            LockupKind::DeprecatedConstant => 0,
         }
     }
 
@@ -203,8 +205,8 @@ impl LockupKind {
             LockupKind::None => 0,
             LockupKind::Daily => 1,
             LockupKind::Monthly => 2,
-            LockupKind::Cliff => 3, // can freely move between Cliff and Constant
-            LockupKind::Constant => 3,
+            LockupKind::DeprecatedCliff => 0,
+            LockupKind::DeprecatedConstant => 0,
         }
     }
 
@@ -213,8 +215,8 @@ impl LockupKind {
             LockupKind::None => false,
             LockupKind::Daily => true,
             LockupKind::Monthly => true,
-            LockupKind::Cliff => false,
-            LockupKind::Constant => false,
+            LockupKind::DeprecatedCliff => false,
+            LockupKind::DeprecatedConstant => false,
         }
     }
 }
@@ -375,165 +377,6 @@ mod tests {
             expected_months_left: 0,
             months_total: 10.0,
             curr_month: 11.,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_warmup() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power: locked_cliff_power(amount_deposited, 10.5),
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: -0.5,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_start() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 10.0);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 0.0,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_one_third_day() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 9.67);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 0.33,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_half_day() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 9.5);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 0.5,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_two_thirds_day() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 9.34);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 0.66,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_one_day() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 9.0);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 1.0,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_one_day_one_third() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 8.67);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 1.33,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_two_days() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        // (8/2555) * deposit w/ 6 decimals.
-        let expected_voting_power = locked_cliff_power(amount_deposited, 8.0);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 2.0,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_nine_dot_nine_days() -> Result<()> {
-        // 10 tokens with 6 decimals.
-        let amount_deposited = 10 * 1_000_000;
-        let expected_voting_power = locked_cliff_power(amount_deposited, 0.1);
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power,
-            amount_deposited,
-            days_total: 10.0,
-            curr_day: 9.9,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_ten_days() -> Result<()> {
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power: 0, // (0/MAX_DAYS_LOCKED) * deposit w/ 6 decimals.
-            amount_deposited: 10 * 1_000_000,
-            days_total: 10.0,
-            curr_day: 10.0,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_ten_dot_one_days() -> Result<()> {
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power: 0, // (0/MAX_DAYS_LOCKED) * deposit w/ 6 decimals.
-            amount_deposited: 10 * 1_000_000, // 10 tokens with 6 decimals.
-            days_total: 10.0,
-            curr_day: 10.1,
-            kind: LockupKind::Cliff,
-        })
-    }
-
-    #[test]
-    pub fn voting_power_cliff_eleven_days() -> Result<()> {
-        run_test_voting_power(TestVotingPower {
-            expected_voting_power: 0, // (0/MAX_DAYS_LOCKED) * deposit w/ 6 decimals.
-            amount_deposited: 10 * 1_000_000, // 10 tokens with 6 decimals.
-            days_total: 10.0,
-            curr_day: 10.1,
-            kind: LockupKind::Cliff,
         })
     }
 
@@ -756,7 +599,7 @@ mod tests {
         let end_ts = start_ts + days_to_secs(t.days_total);
         let curr_ts = start_ts + days_to_secs(t.curr_day);
         let l = Lockup {
-            kind: LockupKind::Cliff,
+            kind: LockupKind::Daily,
             start_ts,
             end_ts,
             reserved: [0u8; 15],

@@ -617,46 +617,6 @@ impl AddinCookie {
     }
 
     #[allow(dead_code)]
-    pub async fn reset_lockup(
-        &self,
-        registrar: &RegistrarCookie,
-        voter: &VoterCookie,
-        authority: &Keypair,
-        deposit_entry_index: u8,
-        kind: voter_stake_registry::state::LockupKind,
-        periods: u32,
-    ) -> Result<(), BanksClientError> {
-        let data =
-            anchor_lang::InstructionData::data(&voter_stake_registry::instruction::ResetLockup {
-                deposit_entry_index,
-                kind,
-                periods,
-            });
-
-        let accounts = anchor_lang::ToAccountMetas::to_account_metas(
-            &voter_stake_registry::accounts::ResetLockup {
-                registrar: registrar.address,
-                voter: voter.address,
-                voter_authority: authority.pubkey(),
-            },
-            None,
-        );
-
-        let instructions = vec![Instruction {
-            program_id: self.program_id,
-            accounts,
-            data,
-        }];
-
-        // clone the secrets
-        let signer = Keypair::from_base58_string(&authority.to_base58_string());
-
-        self.solana
-            .process_transaction(&instructions, Some(&[&signer]))
-            .await
-    }
-
-    #[allow(dead_code)]
     pub async fn internal_transfer_locked(
         &self,
         registrar: &RegistrarCookie,

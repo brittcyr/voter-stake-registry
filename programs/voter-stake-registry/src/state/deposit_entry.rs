@@ -125,59 +125,9 @@ impl DepositEntry {
                 max_locked_vote_weight,
                 lockup_saturation_secs,
             ),
-            LockupKind::Cliff => {
-                self.voting_power_cliff(curr_ts, max_locked_vote_weight, lockup_saturation_secs)
-            }
-            LockupKind::Constant => {
-                self.voting_power_cliff(curr_ts, max_locked_vote_weight, lockup_saturation_secs)
-            }
+            LockupKind::DeprecatedConstant => Ok(0),
+            LockupKind::DeprecatedCliff => Ok(0),
         }
-    }
-
-    /// Vote power contribution from locked funds only at `at_ts`, assuming the user does everything
-    /// they can to unlock as quickly as possible at `curr_ts`.
-    ///
-    /// Currently that means that Constant lockups get turned into Cliff lockups.
-    pub fn voting_power_locked_guaranteed(
-        &self,
-        curr_ts: i64,
-        at_ts: i64,
-        max_locked_vote_weight: u64,
-        lockup_saturation_secs: u64,
-    ) -> Result<u64> {
-        let mut altered = *self;
-
-        // Trigger the unlock phase for constant lockups
-        if self.lockup.kind == LockupKind::Constant {
-            altered.lockup.kind = LockupKind::Cliff;
-            altered.lockup.start_ts = curr_ts;
-            altered.lockup.end_ts = curr_ts
-                .checked_add(i64::try_from(self.lockup.seconds_left(curr_ts)).unwrap())
-                .unwrap();
-        }
-
-        // Other lockup types don't need changes, because the user
-        // cannot reduce their lockup strength.
-
-        altered.voting_power_locked(at_ts, max_locked_vote_weight, lockup_saturation_secs)
-    }
-
-    /// Vote power contribution from funds with linear vesting.
-    fn voting_power_cliff(
-        &self,
-        curr_ts: i64,
-        max_locked_vote_weight: u64,
-        lockup_saturation_secs: u64,
-    ) -> Result<u64> {
-        let remaining = min(self.lockup.seconds_left(curr_ts), lockup_saturation_secs);
-        Ok(u64::try_from(
-            (max_locked_vote_weight as u128)
-                .checked_mul(remaining as u128)
-                .unwrap()
-                .checked_div(lockup_saturation_secs as u128)
-                .unwrap(),
-        )
-        .unwrap())
     }
 
     /// Vote power contribution from cliff-locked funds.
@@ -300,8 +250,8 @@ impl DepositEntry {
             LockupKind::None => Ok(self.amount_initially_locked_native),
             LockupKind::Daily => self.vested_linearly(curr_ts),
             LockupKind::Monthly => self.vested_linearly(curr_ts),
-            LockupKind::Cliff => Ok(0),
-            LockupKind::Constant => Ok(0),
+            LockupKind::DeprecatedCliff => Ok(self.amount_initially_locked_native),
+            LockupKind::DeprecatedConstant => Ok(self.amount_initially_locked_native),
         }
     }
 
@@ -381,7 +331,7 @@ impl DepositEntry {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::LockupKind::{Constant, Daily};
+    use crate::LockupKind::Daily;
 
     #[test]
     pub fn resolve_vesting() -> Result<()> {
@@ -516,55 +466,6 @@ mod tests {
             .voting_power(&voting_mint_config, lockup_start - saturation + 2 * day + 1)
             .unwrap();
         assert_eq!(voting_power, 18_999);
-
-        Ok(())
-    }
-
-    #[test]
-    pub fn guaranteed_lockup_test() -> Result<()> {
-        // Check that constant lockups are handled correctly.
-        let day: i64 = 86_400;
-        let saturation = (10 * day) as u64;
-        let start = 10_000_000_000; // arbitrary point
-        let deposit = DepositEntry {
-            amount_deposited_native: 10_000,
-            amount_initially_locked_native: 10_000,
-            lockup: Lockup {
-                start_ts: start,
-                end_ts: start + 5 * day,
-                kind: Constant,
-                reserved: [0; 15],
-            },
-            is_used: true,
-            allow_clawback: false,
-            voting_mint_config_idx: 0,
-            reserved: [0; 29],
-        };
-
-        let v = |curr_offset, at_offset| {
-            deposit
-                .voting_power_locked_guaranteed(
-                    start + curr_offset,
-                    start + at_offset,
-                    100,
-                    saturation,
-                )
-                .unwrap()
-        };
-
-        assert_eq!(v(0, 0), 50);
-        assert_eq!(v(-day, 0), 40);
-        assert_eq!(v(-100 * day, 0), 0);
-        assert_eq!(v(-100 * day, -98 * day), 30);
-        assert_eq!(v(0, day), 40);
-        assert_eq!(v(0, 5 * day), 0);
-        assert_eq!(v(0, 50 * day), 0);
-        assert_eq!(v(day, day), 50);
-        assert_eq!(v(day, 2 * day,), 40);
-        assert_eq!(v(day, 20 * day), 0);
-        assert_eq!(v(50 * day, 50 * day), 50);
-        assert_eq!(v(50 * day, 51 * day), 40);
-        assert_eq!(v(50 * day, 80 * day), 0);
 
         Ok(())
     }
